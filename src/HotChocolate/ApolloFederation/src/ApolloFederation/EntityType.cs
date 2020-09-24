@@ -31,8 +31,8 @@ namespace HotChocolate.ApolloFederation
             IDictionary<string, object> contextData)
         {
             // Add types to union if they contain a key directive
-            if (definition is ObjectTypeDefinition objectTypeDefinition &&
-                discoveryContext.Type is ObjectType objectType)
+            if (discoveryContext.Type is ObjectType objectType  &&
+                definition is ObjectTypeDefinition objectTypeDefinition)
             {
                 var containsObjectLevelKeyDirective = objectTypeDefinition.Directives.Any(
                     directive => directive.Reference is NameDirectiveReference {Name: {Value: "key"}}
