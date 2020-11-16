@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using HotChocolate;
+using HotChocolate.AspNetCore;
 using HotChocolate.AspNetCore.Utilities;
 using HotChocolate.Execution.Configuration;
 using HotChocolate.Language;
@@ -19,7 +20,8 @@ namespace Microsoft.Extensions.DependencyInjection
             }
 
             services.AddGraphQLCore();
-            services.TryAddSingleton<IHttpResultSerializer, DefaultHttpResultSerializer>();
+            services.TryAddSingleton<IHttpResultSerializer>(
+                new DefaultHttpResultSerializer());
             services.TryAddSingleton<IHttpRequestParser>(
                 sp => new DefaultHttpRequestParser(
                     sp.GetRequiredService<IDocumentCache>(),

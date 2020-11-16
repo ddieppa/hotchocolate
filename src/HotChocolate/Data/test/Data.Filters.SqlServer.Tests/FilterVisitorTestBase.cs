@@ -42,7 +42,8 @@ namespace HotChocolate.Data.Filters
 
         protected IRequestExecutor CreateSchema<TEntity, T>(
             TEntity[] entities,
-            FilterConvention? convention = null)
+            FilterConvention? convention = null,
+            bool withPaging = false)
             where TEntity : class
             where T : FilterInputType<TEntity>
         {
@@ -54,53 +55,80 @@ namespace HotChocolate.Data.Filters
                 .AddConvention<IFilterConvention>(convention)
                 .AddFiltering()
                 .AddQueryType(
-                    c => c
-                        .Name("Query")
-                        .Field("root")
-                        .Resolver(resolver)
-                        .Use(next => async context =>
-                        {
-                            await next(context);
+                    c =>
+                    {
+                        ApplyConfigurationToField<TEntity, T>(
+                            c.Name("Query").Field("root").Resolver(resolver),
+                            withPaging);
 
-                            if (context.Result is IQueryable<TEntity> queryable)
-                            {
-                                try
-                                {
-                                    context.ContextData["sql"] = queryable.ToQueryString();
-                                }
-                                catch (Exception)
-                                {
-                                    context.ContextData["sql"] =
-                                        "EF Core 3.1 does not support ToQuerString offically";
-                                }
-                            }
-                        })
-                        .UseFiltering<T>());
+                        ApplyConfigurationToField<TEntity, T>(
+                            c.Name("Query")
+                                .Field("rootExecutable")
+                                .Resolver(
+                                    ctx => resolver(ctx).AsExecutable()),
+                            withPaging);
+                    });
 
-            ISchema? schema = builder.Create();
+            ISchema schema = builder.Create();
 
             return new ServiceCollection()
-                .Configure<RequestExecutorFactoryOptions>(Schema.DefaultName, o => o.Schema = schema)
+                .Configure<RequestExecutorSetup>(
+                    Schema.DefaultName,
+                    o => o.Schema = schema)
                 .AddGraphQL()
-                .UseRequest(next => async context =>
-                {
-                    await next(context);
-                    if (context.Result is IReadOnlyQueryResult result &&
-                        context.ContextData.TryGetValue("sql", out var queryString))
+                .UseRequest(
+                    next => async context =>
                     {
-                        context.Result =
-                            QueryResultBuilder
-                                .FromResult(result)
-                                .SetContextData("sql", queryString)
-                                .Create();
-                    }
-                })
+                        await next(context);
+                        if (context.Result is IReadOnlyQueryResult result &&
+                            context.ContextData.TryGetValue("sql", out var queryString))
+                        {
+                            context.Result =
+                                QueryResultBuilder
+                                    .FromResult(result)
+                                    .SetContextData("sql", queryString)
+                                    .Create();
+                        }
+                    })
                 .UseDefaultPipeline()
                 .Services
                 .BuildServiceProvider()
                 .GetRequiredService<IRequestExecutorResolver>()
                 .GetRequestExecutorAsync()
                 .Result;
+        }
+
+        private void ApplyConfigurationToField<TEntity, TType>(
+            IObjectFieldDescriptor field,
+            bool withPaging)
+            where TEntity : class
+            where TType : FilterInputType<TEntity>
+        {
+            field.Use(
+                next => async context =>
+                {
+                    await next(context);
+
+                    if (context.Result is IQueryable<TEntity> queryable)
+                    {
+                        try
+                        {
+                            context.ContextData["sql"] = queryable.ToQueryString();
+                        }
+                        catch (Exception)
+                        {
+                            context.ContextData["sql"] =
+                                "EF Core 3.1 does not support ToQueryString";
+                        }
+                    }
+                });
+
+            if (withPaging)
+            {
+                field.UsePaging<ObjectType<TEntity>>();
+            }
+
+            field.UseFiltering<TType>();
         }
     }
 }

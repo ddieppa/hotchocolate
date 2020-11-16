@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HotChocolate.Execution.Batching;
 using HotChocolate.Execution.Instrumentation;
-using HotChocolate.Execution.Utilities;
+using HotChocolate.Execution.Processing;
 using HotChocolate.Utilities;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,6 +12,7 @@ namespace HotChocolate.Execution
 {
     internal sealed class RequestExecutor : IRequestExecutor
     {
+        private readonly DefaultRequestContextAccessor _requestContextAccessor;
         private readonly IServiceProvider _applicationServices;
         private readonly IErrorHandler _errorHandler;
         private readonly ITypeConverter _converter;
@@ -22,6 +23,7 @@ namespace HotChocolate.Execution
 
         public RequestExecutor(
             ISchema schema,
+            DefaultRequestContextAccessor requestContextAccessor,
             IServiceProvider applicationServices,
             IServiceProvider executorServices,
             IErrorHandler errorHandler,
@@ -32,6 +34,8 @@ namespace HotChocolate.Execution
         {
             Schema = schema ??
                 throw new ArgumentNullException(nameof(schema));
+            _requestContextAccessor = requestContextAccessor ?? 
+                throw new ArgumentNullException(nameof(requestContextAccessor));
             _applicationServices = applicationServices ??
                 throw new ArgumentNullException(nameof(applicationServices));
             Services = executorServices ??
@@ -79,6 +83,8 @@ namespace HotChocolate.Execution
                     RequestAborted = cancellationToken
                 };
 
+                _requestContextAccessor.RequestContext = context;
+
                 await _requestDelegate(context).ConfigureAwait(false);
 
                 if (context.Result is null)
@@ -86,10 +92,18 @@ namespace HotChocolate.Execution
                     throw new InvalidOperationException();
                 }
 
-                if(scope is not null && context.Result is SubscriptionResult result)
+                if (scope is not null)
                 {
-                    context.Result = new SubscriptionResult(result, scope);
-                    scope = null;
+                    if (context.Result is DeferredQueryResult deferred)
+                    {
+                        context.Result = new DeferredQueryResult(deferred, scope);
+                        scope = null;
+                    }
+                    else if (context.Result is SubscriptionResult result)
+                    {
+                        context.Result = new SubscriptionResult(result, scope);
+                        scope = null;
+                    }
                 }
 
                 return context.Result;

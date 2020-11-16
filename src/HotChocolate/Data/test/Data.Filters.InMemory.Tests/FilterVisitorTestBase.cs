@@ -4,6 +4,7 @@ using HotChocolate.Execution;
 using HotChocolate.Resolvers;
 using HotChocolate.Types;
 using System.Linq;
+using HotChocolate.Types.Relay;
 
 namespace HotChocolate.Data.Filters
 {
@@ -26,24 +27,47 @@ namespace HotChocolate.Data.Filters
 
         protected IRequestExecutor CreateSchema<TEntity, T>(
             TEntity[] entities,
-            FilterConvention? convention = null)
+            FilterConvention? convention = null,
+            bool withPaging = false)
             where TEntity : class
             where T : FilterInputType<TEntity>
         {
             convention ??= new FilterConvention(x => x.AddDefaults().BindRuntimeType<TEntity, T>());
 
-            Func<IResolverContext, IEnumerable<TEntity>>? resolver = BuildResolver(entities);
+            Func<IResolverContext, IEnumerable<TEntity>> resolver = BuildResolver(entities);
 
             ISchemaBuilder builder = SchemaBuilder.New()
                 .AddConvention<IFilterConvention>(convention)
                 .AddFiltering()
-                .AddQueryType(c => c
-                    .Name("Query")
-                    .Field("root")
-                    .Resolver(resolver)
-                    .UseFiltering<T>());
+                .AddQueryType(
+                    c =>
+                    {
+                        IObjectFieldDescriptor field = c
+                            .Name("Query")
+                            .Field("root")
+                            .Resolver(resolver);
 
-            ISchema? schema = builder.Create();
+                        if (withPaging)
+                        {
+                            field.UsePaging<ObjectType<TEntity>>();
+                        }
+
+                        field.UseFiltering<T>();
+
+                        field = c
+                            .Name("Query")
+                            .Field("rootExecutable")
+                            .Resolver(ctx => resolver(ctx).AsExecutable());
+
+                        if (withPaging)
+                        {
+                            field.UsePaging<ObjectType<TEntity>>();
+                        }
+
+                        field.UseFiltering<T>();
+                    });
+
+            ISchema schema = builder.Create();
 
             return schema.MakeExecutable();
         }

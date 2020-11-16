@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Newtonsoft.Json;
 
@@ -130,6 +129,29 @@ namespace HotChocolate.AspNetCore.Utilities
             return result;
         }
 
+        public static async Task<ClientRawResult> PostRawAsync(
+            this TestServer testServer,
+            ClientQueryRequest request,
+            string path = "/graphql")
+        {
+            HttpResponseMessage response =
+                await SendPostRequestAsync(
+                    testServer,
+                    JsonConvert.SerializeObject(request),
+                    path);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new ClientRawResult { StatusCode = HttpStatusCode.NotFound };
+            }
+
+            var result = new ClientRawResult();
+            result.StatusCode = response.StatusCode;
+            result.ContentType = response.Content.Headers.ContentType.ToString();
+            result.Content = await response.Content.ReadAsStringAsync();
+            return result;
+        }
+
         public static async Task<ClientQueryResult> GetAsync(
             this TestServer testServer,
             ClientQueryRequest request,
@@ -187,10 +209,12 @@ namespace HotChocolate.AspNetCore.Utilities
         public static string CreateUrl(string path)
         {
             var url = "http://localhost:5000";
+
             if (path != null)
             {
                 url += "/" + path.TrimStart('/');
             }
+
             return url;
         }
     }

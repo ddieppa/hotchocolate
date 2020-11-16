@@ -1,19 +1,33 @@
+using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.ObjectPool;
 using GreenDonut;
 using HotChocolate.Execution;
 using HotChocolate.Execution.Caching;
-using HotChocolate.Execution.Utilities;
+using HotChocolate.Execution.Processing;
 using HotChocolate.Fetching;
 using HotChocolate.Language;
 using HotChocolate.Utilities;
 using HotChocolate.DataLoader;
+using HotChocolate.Execution.Configuration;
+using HotChocolate.Execution.Internal;
 using HotChocolate.Types.Relay;
+using Microsoft.Extensions.Options;
 
 namespace Microsoft.Extensions.DependencyInjection
 {
     internal static class InternalServiceCollectionExtensions
     {
+        internal static IServiceCollection TryAddRequestExecutorFactoryOptionsMonitor(
+            this IServiceCollection services)
+        {
+            services.TryAddSingleton<IRequestExecutorOptionsMonitor>(
+                sp => new DefaultRequestExecutorOptionsMonitor(
+                    sp.GetRequiredService<IOptionsMonitor<RequestExecutorSetup>>(),
+                    sp.GetServices<IRequestExecutorOptionsProvider>()));
+            return services;
+        }
+
         internal static IServiceCollection TryAddVariableCoercion(
             this IServiceCollection services)
         {
@@ -51,7 +65,7 @@ namespace Microsoft.Extensions.DependencyInjection
             services.TryAddTransient<OperationContext>();
             services.TryAddSingleton<ObjectPool<OperationContext>>(
                 sp => new OperationContextPool(
-                    () => sp.GetRequiredService<OperationContext>(),
+                    sp.GetRequiredService<OperationContext>,
                 maximumRetained));
             return services;
         }
@@ -67,7 +81,11 @@ namespace Microsoft.Extensions.DependencyInjection
         internal static IServiceCollection TryAddRequestExecutorResolver(
             this IServiceCollection services)
         {
-            services.TryAddSingleton<IRequestExecutorResolver, RequestExecutorResolver>();
+            services.TryAddSingleton<RequestExecutorResolver>();
+            services.TryAddSingleton<IRequestExecutorResolver>(
+                sp => sp.GetRequiredService<RequestExecutorResolver>());
+            services.TryAddSingleton<IInternalRequestExecutorResolver>(
+                sp => sp.GetRequiredService<RequestExecutorResolver>());
             return services;
         }
 
@@ -98,6 +116,15 @@ namespace Microsoft.Extensions.DependencyInjection
             return services;
         }
 
+        internal static IServiceCollection TryAddRequestContextAccessor(
+            this IServiceCollection services)
+        {
+            services.TryAddSingleton<DefaultRequestContextAccessor>();
+            services.TryAddSingleton<IRequestContextAccessor>(
+                sp => sp.GetRequiredService<DefaultRequestContextAccessor>());
+            return services;
+        }
+
         internal static IServiceCollection TryAddDefaultDataLoaderRegistry(
             this IServiceCollection services)
         {
@@ -108,7 +135,7 @@ namespace Microsoft.Extensions.DependencyInjection
         internal static IServiceCollection TryAddIdSerializer(
             this IServiceCollection services)
         {
-            services.TryAddScoped<IIdSerializer, IdSerializer>();
+            services.TryAddSingleton<IIdSerializer, IdSerializer>();
             return services;
         }
     }
